@@ -109,6 +109,7 @@ git pull && ./ctl.sh start         # 升级：仓库改了 compose / 配置 / �
 | 502 Bad Gateway | `./ctl.sh status` 隧道是否 healthy；`logs tunnel-continuum` | 隧道断了 / 转发端口不对 / 目标容器重建中 |
 | 隧道反复重启 | `logs tunnel-continuum` | 认证失败：`.env` 的 TUNNEL_KEY 指向的钥匙不对；指纹不符：见第六节；`ssh-check` 可单独验 |
 | status 说 Traefik API 不可达 | `docker ps`、`ss -lntp \| grep ':80 '` | 容器没起或 80 被别的占了 |
+| 所有域名 404，traefik 日志反复 `client version 1.24 is too old` | `./ctl.sh logs` | Docker 29 要求 API 1.44 以上，Traefik 3.7 之前写死 1.24；`.env` 的 `TRAEFIK_IMAGE` 用 3.7 及以上，`./ctl.sh start` 重建 |
 | 从 r9000p 连不上但 w350t 本机 status 正常 | `firewall-cmd --list-services` | 放行 http：`firewall-cmd --permanent --add-service=http && firewall-cmd --reload` |
 
 ## 八、可选：dnsmasq 泛解析
