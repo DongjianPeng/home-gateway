@@ -1,0 +1,56 @@
+# 家里局域网网关：Traefik 按域名分流 + SSH 隧道把云服务器上只绑回环的管理页拉到局域网。
+# 只在 w350t 上跑一份；家里电脑把 *.w350t.sz 指到 w350t（hosts/r9000p-hosts.txt）即可按域名访问，不用记端口。
+#
+# Traefik 跑在宿主机网络：它直接按各容器在自己 bridge 网络里的 IP 转发，别的项目接入只需加 label，
+# 不用加入什么共享网络，也就不存在「网关没起导致别的项目起不来」的依赖。
+#
+# 域名约定：<服务>.<DOMAIN_SUFFIX> 是 w350t 本机的服务；<服务>.tx.<DOMAIN_SUFFIX> 是云服务器 continuum 上经隧道拉过来的。
+name: home-gateway
+
+services:
+  traefik:
+    image: ${TRAEFIK_IMAGE:-docker.io/traefik:v3.5}
+    restart: unless-stopped
+    network_mode: host
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./traefik/traefik.yml:/etc/traefik/traefik.yml:ro
+    labels:
+      - "traefik.enable=true"
+      # 面板：http://traefik.<DOMAIN_SUFFIX>，看当前全部域名各指向哪个容器
+      - "traefik.http.routers.dashboard.rule=Host(`traefik.${DOMAIN_SUFFIX:-w350t.sz}`)"
+      - "traefik.http.routers.dashboard.service=api@internal"
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+
+  # 到 continuum 的隧道：一台远端机器一个容器，转发规则全在 ssh/config 的 Host continuum 段。
+  # 容器退出（断线、转发失败）即被 restart 拉起重连，不需要 autossh
+  tunnel-continuum:
+    build: ./tunnel
+    image: home-gateway/ssh-tunnel:local
+    restart: unless-stopped
+    init: true
+    command: ["ssh", "-N", "continuum"]
+    volumes:
+      - ./ssh/config:/root/.ssh/config:ro
+      - ./ssh/hosts.conf:/root/.ssh/hosts.conf:ro
+      - ${TUNNEL_KEY:-/root/.ssh/id_rsa}:/root/.ssh/key:ro
+      - ${TUNNEL_KNOWN_HOSTS:-/root/.ssh/known_hosts}:/root/.ssh/known_hosts:ro
+    # 探转发端口是否在听：ssh 一拉起转发就开始监听，不通即 unhealthy
+    healthcheck:
+      test: ["CMD", "nc", "-z", "127.0.0.1", "9091"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    labels:
+      - "traefik.enable=true"
+      # 云上 mihomo-stack 的管理页
+      - "traefik.http.routers.mihomo-tx.rule=Host(`mihomo.tx.${DOMAIN_SUFFIX:-w350t.sz}`)"
+      - "traefik.http.services.mihomo-tx.loadbalancer.server.port=9091"
+    deploy:
+      resources:
+        limits:
+          memory: 32M

@@ -1,0 +1,20 @@
+# 隧道转发规则（唯一事实源）。远端地址 / 登录用户 / 端口在 hosts.conf 里，不进 git，
+# ./ctl.sh init 从 w350t 的 ~/.ssh/config 自动生成。改了本文件：./ctl.sh restart tunnel-continuum
+Include /root/.ssh/hosts.conf
+
+Host *
+    IdentityFile /root/.ssh/key
+    UserKnownHostsFile /root/.ssh/known_hosts
+    # 固化指纹：远端重装系统换了指纹时隧道拒连，而不是盲信新指纹
+    StrictHostKeyChecking yes
+    BatchMode yes
+    ServerAliveInterval 30
+    ServerAliveCountMax 3
+    # 任何一条转发失败就退出，交给 docker 的 restart 重连
+    ExitOnForwardFailure yes
+
+# 云服务器 continuum。LocalForward 绑 0.0.0.0 绑的是容器自己的网络命名空间，
+# 对局域网暴露与否由 docker-compose.yml 里隧道容器的 label 决定
+Host continuum
+    # mihomo-stack 管理页 -> http://mihomo.tx.<DOMAIN_SUFFIX>
+    LocalForward 0.0.0.0:9091 127.0.0.1:9091

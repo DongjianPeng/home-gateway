@@ -1,0 +1,6 @@
+# 家里电脑（r9000p 等）的 hosts 条目，全部指向 w350t。
+# Windows 路径 C:\Windows\System32\drivers\etc\hosts，需管理员权限；改完 ipconfig /flushdns
+# hosts 不支持泛解析，每加一个域名要加一行；嫌麻烦见 README「可选：dnsmasq 泛解析」
+192.168.0.231 traefik.w350t.sz
+192.168.0.231 mihomo.w350t.sz
+192.168.0.231 mihomo.tx.w350t.sz

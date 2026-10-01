@@ -1,0 +1,5 @@
+# 远端地址 / 登录用户 / 端口。./ctl.sh init 会从本机 `ssh -G <别名>` 自动生成 hosts.conf，本文件只是样例
+Host continuum
+    HostName 1.2.3.4
+    User ubuntu
+    Port 22
