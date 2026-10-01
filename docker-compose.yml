@@ -9,7 +9,8 @@ name: home-gateway
 
 services:
   traefik:
-    image: ${TRAEFIK_IMAGE:-docker.io/traefik:v3.5}
+    # 3.7 起自动协商 Docker API 版本，Docker 29 要求 API >= 1.44，更老的 Traefik 连不上 docker.sock
+    image: ${TRAEFIK_IMAGE:-docker.io/traefik:v3.7}
     restart: unless-stopped
     network_mode: host
     volumes:
