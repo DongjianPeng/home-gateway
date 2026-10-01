@@ -35,8 +35,14 @@ for r in sorted(rows, key=lambda r: r.get("rule", "")):
     print("%-44s -> %-28s %s" % (r.get("rule", ""), r.get("service", ""), r.get("status", "")))
 '
 
+# 带面板域名的 Host 头访问 Traefik API；拿不到 JSON 时给出原因而不是让 python 报错
 traefik_api() {
-  curl -sS -m 5 -H "Host: traefik.$(env_value DOMAIN_SUFFIX w350t.sz)" "http://127.0.0.1/api/$1"
+  local body
+  body="$(curl -sS -m 5 -H "Host: traefik.$(env_value DOMAIN_SUFFIX w350t.sz)" "http://127.0.0.1/api/$1")"     || { echo "Traefik 不可达：容器没起或 80 没通（docker ps、ss -lntp | grep ':80 '）" >&2; return 1; }
+  case "$body" in
+    "["* | "{"*) echo "$body" ;;
+    *) echo "Traefik 没返回 JSON（$body）：面板路由不存在，多半是 docker provider 没起来，看 ./ctl.sh logs" >&2; return 1 ;;
+  esac
 }
 
 # 生成 ssh/hosts.conf：本机 ~/.ssh/config 里有这个别名就用 ssh -G 解析出的真值，没有就复制样例
@@ -88,12 +94,18 @@ cmd_status() {
   compose ps
   echo
   local routers
-  routers="$(traefik_api http/routers 2>/dev/null)" || { echo "Traefik API 不可达（容器没起或 80 没通）"; return 1; }
+  routers="$(traefik_api http/routers)" || return 1
   echo "$routers" | python3 -c "$PY_HOSTS" | while read -r host service; do
     local code
     code="$(curl -s -m 5 -o /dev/null -w '%{http_code}' -H "Host: $host" http://127.0.0.1/ || true)"
     printf '%-36s HTTP %-4s %s\n' "http://$host" "$code" "$service"
   done
+}
+
+cmd_routes() {
+  local routers
+  routers="$(traefik_api http/routers)" || return 1
+  echo "$routers" | python3 -c "$PY_ROUTES"
 }
 
 case "${1:-}" in
@@ -103,7 +115,7 @@ case "${1:-}" in
   stop) compose stop "${@:2}" ;;
   restart) compose restart "${@:2}" ;;
   status) cmd_status ;;
-  routes) traefik_api http/routers | python3 -c "$PY_ROUTES" ;;
+  routes) cmd_routes ;;
   logs) compose logs -f --tail 200 "${2:-traefik}" ;;
   build) compose build tunnel-continuum ;;
   *) sed -n '2,10p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 1 ;;
