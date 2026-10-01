@@ -21,6 +21,9 @@ services:
       # 面板：http://traefik.<DOMAIN_SUFFIX>，看当前全部域名各指向哪个容器
       - "traefik.http.routers.dashboard.rule=Host(`traefik.${DOMAIN_SUFFIX:-w350t.sz}`)"
       - "traefik.http.routers.dashboard.service=api@internal"
+      # 占位端口：host 网络的容器没有暴露端口，而 Traefik 会给每个 enable 的容器自动建一个默认 service，
+      # 缺端口就报 port is missing 并把这个容器的全部规则作废。显式给一个 service 它就不再自动建，路由实际指向 api@internal
+      - "traefik.http.services.dashboard.loadbalancer.server.port=1"
     deploy:
       resources:
         limits:
