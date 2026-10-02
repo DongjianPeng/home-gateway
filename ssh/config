@@ -8,8 +8,9 @@ Host *
     # 固化指纹：远端重装系统换了指纹时隧道拒连，而不是盲信新指纹
     StrictHostKeyChecking yes
     BatchMode yes
-    ServerAliveInterval 30
-    ServerAliveCountMax 3
+    # 每 15 秒探一次、连续 2 次没回应就认定断线：跨运营商到云上偶尔会静默断掉，30 秒内重连比 90 秒少挨一分钟
+    ServerAliveInterval 15
+    ServerAliveCountMax 2
     # 任何一条转发失败就退出，交给 docker 的 restart 重连
     ExitOnForwardFailure yes
 
