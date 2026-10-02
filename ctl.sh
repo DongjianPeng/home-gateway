@@ -23,12 +23,15 @@ env_value() {
   echo "${value:-$2}"
 }
 
-# 从 Traefik API 的 routers 列表里提取「域名 后端」
+# 从 Traefik API 的 routers 列表里提取「域名 后端」。入口级 TLS 会把每个路由拆成 http / https 两条，按域名去重
 PY_HOSTS='
 import json, re, sys
+seen = {}
 for r in json.load(sys.stdin):
     for host in re.findall(r"Host\(`([^`]+)`\)", r.get("rule", "")):
-        print(host, r.get("service", ""))
+        seen.setdefault(host, r.get("service", ""))
+for host, service in seen.items():
+    print(host, service)
 '
 PY_ROUTES='
 import json, sys
