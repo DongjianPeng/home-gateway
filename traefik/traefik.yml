@@ -2,12 +2,28 @@
 entryPoints:
   web:
     address: ":80"
+    # 全部 http 跳 https：Chrome 会自作主张把 http 升级成 https，不给它 443 就打不开，索性只提供 https
+    http:
+      redirections:
+        entryPoint:
+          to: websecure
+          scheme: https
+          permanent: true
+  websecure:
+    address: ":443"
+    # 入口级默认 TLS：挂在这个入口的路由自动启用 TLS，各项目的 label 不用再写 tls=true
+    http:
+      tls: {}
 
 providers:
   docker:
     endpoint: "unix:///var/run/docker.sock"
     # 只路由显式标了 traefik.enable=true 的容器
     exposedByDefault: false
+    watch: true
+  # 证书等动态配置放文件，目录监听，续签后自动生效
+  file:
+    directory: /etc/traefik/dynamic
     watch: true
 
 api:

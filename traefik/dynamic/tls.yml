@@ -1,0 +1,11 @@
+# 动态配置（file provider 监听本目录，改了自动生效）：网关证书。
+# certs/ 里的通配证书由 certs/renew.sh 用家里的自签 CA 签出，续签后 Traefik 自动热加载
+tls:
+  certificates:
+    - certFile: /certs/wildcard.crt
+      keyFile: /certs/wildcard.key
+  stores:
+    default:
+      defaultCertificate:
+        certFile: /certs/wildcard.crt
+        keyFile: /certs/wildcard.key
