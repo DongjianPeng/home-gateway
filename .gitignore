@@ -1,3 +1,7 @@
 # 本机生成、含真实地址或密钥路径的文件
 .env
 ssh/hosts.conf
+# 签出的证书与私钥（certs/renew.sh 生成）
+certs/*.crt
+certs/*.key
+certs/*.new

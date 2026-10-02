@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
 # home-gateway 日常操作（在仓库根目录执行）：
-#   ./ctl.sh init                  生成 .env 与 ssh/hosts.conf（从本机 ssh 别名取远端地址），检查密钥 / 80 端口 / 防火墙
+#   ./ctl.sh init                  生成 .env 与 ssh/hosts.conf（从本机 ssh 别名取远端地址），签证书，检查密钥 / 端口 / 防火墙
 #   ./ctl.sh ssh-check             用容器里的配置试登一次远端，验证密钥与指纹
 #   ./ctl.sh start|stop|restart [服务]
-#   ./ctl.sh status                容器状态 + 每个域名的 HTTP 探测
+#   ./ctl.sh status                容器状态 + 证书到期日 + 每个域名的 HTTPS 探测
 #   ./ctl.sh routes                Traefik 当前全部路由（规则 -> 后端）
 #   ./ctl.sh logs [服务]           默认 traefik；隧道看 logs tunnel-continuum（ssh -N 正常时无输出）
+#   ./ctl.sh cert [--force]        签发 / 续签通配证书（certs/renew.sh）
+#   ./ctl.sh cert-cron             安装每周自动续签的 cron（/etc/cron.d/home-gateway）
 #   ./ctl.sh build                 重建隧道镜像
 #
 # @author DongjianPeng
@@ -35,10 +37,11 @@ for r in sorted(rows, key=lambda r: r.get("rule", "")):
     print("%-44s -> %-28s %s" % (r.get("rule", ""), r.get("service", ""), r.get("status", "")))
 '
 
-# 带面板域名的 Host 头访问 Traefik API；拿不到 JSON 时给出原因而不是让 python 报错
+# 带面板域名的 Host 头访问 Traefik API（走 https，-k 是因为按 127.0.0.1 连没有 SNI）；拿不到 JSON 时给出原因
 traefik_api() {
   local body
-  body="$(curl -sS -m 5 -H "Host: traefik.$(env_value DOMAIN_SUFFIX w350t.sz)" "http://127.0.0.1/api/$1")"     || { echo "Traefik 不可达：容器没起或 80 没通（docker ps、ss -lntp | grep ':80 '）" >&2; return 1; }
+  body="$(curl -sSk -m 5 -H "Host: traefik.$(env_value DOMAIN_SUFFIX w350t.sz)" "https://127.0.0.1/api/$1")" \
+    || { echo "Traefik 不可达：容器没起或 443 没通（docker ps、ss -lntp | grep ':443 '）" >&2; return 1; }
   case "$body" in
     "["* | "{"*) echo "$body" ;;
     *) echo "Traefik 没返回 JSON（$body）：面板路由不存在，多半是 docker provider 没起来，看 ./ctl.sh logs" >&2; return 1 ;;
@@ -65,6 +68,12 @@ generate_hosts_conf() {
   fi
 }
 
+port_in_use_hint() {
+  if ss -lnt 2>/dev/null | awk '{print $4}' | grep -qE "[:.]$1\$"; then
+    echo "提示：$1 端口已被占用：$(ss -lntp | awk -v p="[:.]$1\$" '$4 ~ p {print $NF}' | head -1)"
+  fi
+}
+
 cmd_init() {
   [[ -f .env ]] || { cp .env.example .env; echo "已生成 .env"; }
   [[ -f ssh/hosts.conf ]] || generate_hosts_conf "$(env_value TUNNEL_SSH_ALIAS continuum)"
@@ -73,14 +82,17 @@ cmd_init() {
   known="$(env_value TUNNEL_KNOWN_HOSTS /root/.ssh/known_hosts)"
   [[ -f "$key" ]] || echo "提示：找不到私钥 $key，改 .env 的 TUNNEL_KEY"
   [[ -f "$known" ]] || echo "提示：找不到 $known，先在本机 ssh 一次远端让它记录指纹"
-  if ss -lnt 2>/dev/null | awk '{print $4}' | grep -qE '[:.]80$'; then
-    echo "提示：80 端口已被占用：$(ss -lntp | awk '$4 ~ /[:.]80$/ {print $NF}' | head -1)"
-  fi
+  [[ -f certs/wildcard.crt ]] || ./certs/renew.sh
+  port_in_use_hint 80
+  port_in_use_hint 443
   if command -v firewall-cmd >/dev/null 2>&1 && firewall-cmd --state >/dev/null 2>&1; then
-    firewall-cmd --query-service=http >/dev/null 2>&1 \
-      || echo "提示：firewalld 未放行 80：firewall-cmd --permanent --add-service=http && firewall-cmd --reload"
+    local svc
+    for svc in http https; do
+      firewall-cmd --query-service="$svc" >/dev/null 2>&1 \
+        || echo "提示：firewalld 未放行 $svc：firewall-cmd --permanent --add-service=$svc && firewall-cmd --reload"
+    done
   fi
-  echo "下一步：./ctl.sh ssh-check 验证隧道能连，然后 ./ctl.sh start"
+  echo "下一步：./ctl.sh ssh-check 验证隧道能连，然后 ./ctl.sh start，再 ./ctl.sh cert-cron 装上自动续签"
 }
 
 cmd_ssh_check() {
@@ -93,12 +105,17 @@ cmd_ssh_check() {
 cmd_status() {
   compose ps
   echo
+  if [[ -f certs/wildcard.crt ]]; then
+    echo "证书：$(openssl x509 -in certs/wildcard.crt -noout -enddate | sed 's/notAfter=/到期 /')"
+  else
+    echo "证书：未签发（./ctl.sh cert）"
+  fi
   local routers
   routers="$(traefik_api http/routers)" || return 1
   echo "$routers" | python3 -c "$PY_HOSTS" | while read -r host service; do
     local code
-    code="$(curl -s -m 5 -o /dev/null -w '%{http_code}' -H "Host: $host" http://127.0.0.1/ || true)"
-    printf '%-36s HTTP %-4s %s\n' "http://$host" "$code" "$service"
+    code="$(curl -sk -m 5 -o /dev/null -w '%{http_code}' -H "Host: $host" https://127.0.0.1/ || true)"
+    printf '%-36s HTTP %-4s %s\n' "https://$host" "$code" "$service"
   done
 }
 
@@ -106,6 +123,15 @@ cmd_routes() {
   local routers
   routers="$(traefik_api http/routers)" || return 1
   echo "$routers" | python3 -c "$PY_ROUTES"
+}
+
+cmd_cert_cron() {
+  local script
+  script="$(pwd)/certs/renew.sh"
+  printf '# home-gateway 网关证书：每周一凌晨检查，到期前 %s 天自动续签（Traefik 热加载）\n0 3 * * 1 root %s >> /var/log/home-gateway-cert.log 2>&1\n' \
+    "$(env_value CERT_RENEW_BEFORE_DAYS 30)" "$script" > /etc/cron.d/home-gateway
+  chmod 644 /etc/cron.d/home-gateway
+  echo "已写入 /etc/cron.d/home-gateway，日志在 /var/log/home-gateway-cert.log"
 }
 
 case "${1:-}" in
@@ -117,6 +143,8 @@ case "${1:-}" in
   status) cmd_status ;;
   routes) cmd_routes ;;
   logs) compose logs -f --tail 200 "${2:-traefik}" ;;
+  cert) ./certs/renew.sh "${@:2}" ;;
+  cert-cron) cmd_cert_cron ;;
   build) compose build tunnel-continuum ;;
-  *) sed -n '2,10p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 1 ;;
+  *) sed -n '2,12p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 1 ;;
 esac

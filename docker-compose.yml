@@ -1,5 +1,6 @@
 # 家里局域网网关：Traefik 按域名分流 + SSH 隧道把云服务器上只绑回环的管理页拉到局域网。
 # 只在 w350t 上跑一份；家里电脑把 *.w350t.sz 指到 w350t（hosts/r9000p-hosts.txt）即可按域名访问，不用记端口。
+# 只提供 https（80 一律跳 443），证书由 certs/renew.sh 用家里的自签 CA 签出，家里电脑已导入该根证书。
 #
 # Traefik 跑在宿主机网络：它直接按各容器在自己 bridge 网络里的 IP 转发，别的项目接入只需加 label，
 # 不用加入什么共享网络，也就不存在「网关没起导致别的项目起不来」的依赖。
@@ -16,6 +17,9 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - ./traefik/traefik.yml:/etc/traefik/traefik.yml:ro
+      # 动态配置（证书声明）与证书文件；certs/renew.sh 续签后 Traefik 自动热加载
+      - ./traefik/dynamic:/etc/traefik/dynamic:ro
+      - ./certs:/certs:ro
     labels:
       - "traefik.enable=true"
       # 面板：http://traefik.<DOMAIN_SUFFIX>，看当前全部域名各指向哪个容器
