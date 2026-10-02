@@ -46,6 +46,10 @@ services:
       - ./ssh/hosts.conf:/root/.ssh/hosts.conf:ro
       - ${TUNNEL_KEY:-/root/.ssh/id_rsa}:/root/.ssh/key:ro
       - ${TUNNEL_KNOWN_HOSTS:-/root/.ssh/known_hosts}:/root/.ssh/known_hosts:ro
+    # TCP 类服务不走 Traefik，直接发布到宿主机：家里电脑用 pg.tx.<DOMAIN_SUFFIX>:15432 连云上 Continuum 的 PostgreSQL。
+    # w350t 自己的 PostgreSQL 占着 5432，所以对外用 15432
+    ports:
+      - "${PG_TX_PORT:-15432}:5432"
     # 探转发端口是否在听：ssh 一拉起转发就开始监听，不通即 unhealthy
     healthcheck:
       test: ["CMD", "nc", "-z", "127.0.0.1", "9091"]

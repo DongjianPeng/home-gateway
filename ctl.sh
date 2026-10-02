@@ -113,6 +113,13 @@ cmd_status() {
   else
     echo "证书：未签发（./ctl.sh cert）"
   fi
+  local pg_port
+  pg_port="$(env_value PG_TX_PORT 15432)"
+  if timeout 3 bash -c "</dev/tcp/127.0.0.1/$pg_port" 2>/dev/null; then
+    echo "TCP 转发：pg.tx.$(env_value DOMAIN_SUFFIX w350t.sz):$pg_port -> continuum:5432 在听"
+  else
+    echo "TCP 转发：$pg_port 没在听（隧道容器没起或没发布端口）"
+  fi
   local routers
   routers="$(traefik_api http/routers)" || return 1
   echo "$routers" | python3 -c "$PY_HOSTS" | while read -r host service; do

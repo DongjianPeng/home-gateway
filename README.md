@@ -25,7 +25,7 @@ w350t（Docker，本仓库）
 | 形式 | 含义 | 例子 |
 |---|---|---|
 | `<服务>.w350t.sz` | w350t 本机上跑的服务 | `mihomo.w350t.sz`（本机 mihomo-stack 管理页）、`traefik.w350t.sz`（网关面板） |
-| `<服务>.tx.w350t.sz` | 腾讯云 continuum 上经隧道拉回来的服务 | `mihomo.tx.w350t.sz`（云上 mihomo-stack 管理页） |
+| `<服务>.tx.w350t.sz` | 腾讯云 continuum 上经隧道拉回来的服务 | `mihomo.tx.w350t.sz`（云上 mihomo-stack 管理页）；TCP 类带端口：`pg.tx.w350t.sz:15432`（云上 Continuum 的 PostgreSQL） |
 
 后缀在 `.env` 的 `DOMAIN_SUFFIX`。hosts 不支持泛解析，每加一个域名要在 [hosts/r9000p-hosts.txt](hosts/r9000p-hosts.txt) 加一行并同步到家里电脑；
 嫌麻烦见第九节的 dnsmasq 方案。
@@ -73,8 +73,11 @@ ipconfig /flushdns
 3. [hosts/r9000p-hosts.txt](hosts/r9000p-hosts.txt) 加一行，家里电脑同步；
 4. `./ctl.sh restart tunnel-continuum`，`./ctl.sh status` 看新域名的 HTTP 码。
 
-数据库之类非 HTTP 的服务不走 Traefik：同样加 `LocalForward`，再给 `tunnel-continuum` 加 `ports: ["15432:5432"]` 直接发布端口，
-客户端连 `域名:端口`，域名只是好记的别名。
+数据库之类非 HTTP 的服务不走 Traefik：同样加 `LocalForward`，再给 `tunnel-continuum` 加 `ports` 直接发布端口，
+客户端连 `域名:端口`，域名只是好记的别名。已有的例子是云上 Continuum 的 PostgreSQL：ssh/config 里 `LocalForward 0.0.0.0:5432 127.0.0.1:5432`，
+compose 里发布为 `.env` 的 `PG_TX_PORT`（默认 15432，w350t 自带的 PG 占着 5432），家里电脑的 DBeaver / DataGrip 连
+主机 `pg.tx.w350t.sz`、端口 `15432`、库 `continuum`、用户 `continuum`，密码是云服务器 `~/continuum/deploy/compose/.env` 里的 `POSTGRES_PASSWORD`。
+`./ctl.sh status` 会探这个端口是否在听。
 
 加一台远端机器：照 `tunnel-continuum` 复制一个服务，ssh/config 加一个 `Host` 段，hosts.conf 加对应地址，
 `.env` 的 `CERT_REMOTE_PREFIXES` 加上它的前缀后 `./ctl.sh cert --force`。

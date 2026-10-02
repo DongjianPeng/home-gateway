@@ -4,3 +4,5 @@
 192.168.0.231 traefik.w350t.sz
 192.168.0.231 mihomo.w350t.sz
 192.168.0.231 mihomo.tx.w350t.sz
+# TCP 类：只是好记的别名，客户端要带端口，如 pg.tx.w350t.sz:15432
+192.168.0.231 pg.tx.w350t.sz
