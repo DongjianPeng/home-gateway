@@ -16,5 +16,7 @@ Host *
 # 云服务器 continuum。LocalForward 绑 0.0.0.0 绑的是容器自己的网络命名空间，
 # 对局域网暴露与否由 docker-compose.yml 里隧道容器的 label 决定
 Host continuum
-    # mihomo-stack 管理页 -> http://mihomo.tx.<DOMAIN_SUFFIX>
+    # mihomo-stack 管理页 -> https://mihomo.tx.<DOMAIN_SUFFIX>
     LocalForward 0.0.0.0:9091 127.0.0.1:9091
+    # Continuum 的 PostgreSQL（云上只绑回环）-> 容器 5432，由 compose 发布到 w350t 的 PG_TX_PORT，家里电脑直连 pg.tx.<DOMAIN_SUFFIX>:<端口>
+    LocalForward 0.0.0.0:5432 127.0.0.1:5432
